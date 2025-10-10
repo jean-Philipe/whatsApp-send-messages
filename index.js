@@ -130,6 +130,42 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
   }
 });
 
+// Función para detectar el tipo de archivo por su contenido
+function detectFileType(buffer) {
+  // PDF: %PDF-
+  if (buffer.slice(0, 4).toString() === '%PDF') {
+    return { mimeType: 'application/pdf', extension: 'pdf' };
+  }
+  
+  // PNG: 89 50 4E 47
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+    return { mimeType: 'image/png', extension: 'png' };
+  }
+  
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return { mimeType: 'image/jpeg', extension: 'jpg' };
+  }
+  
+  // GIF: 47 49 46 38
+  if (buffer.slice(0, 4).toString() === 'GIF8') {
+    return { mimeType: 'image/gif', extension: 'gif' };
+  }
+  
+  // MP4: 00 00 00 18 66 74 79 70
+  if (buffer.slice(4, 8).toString() === 'ftyp') {
+    return { mimeType: 'video/mp4', extension: 'mp4' };
+  }
+  
+  // DOCX: 50 4B 03 04 (ZIP format)
+  if (buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) {
+    return { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' };
+  }
+  
+  // Por defecto
+  return { mimeType: 'application/octet-stream', extension: 'bin' };
+}
+
 // Endpoint para enviar archivo como binary data
 app.post('/send-binary', async (req, res) => {
   try {
@@ -143,8 +179,21 @@ app.post('/send-binary', async (req, res) => {
     // Obtener parámetros de query string o headers
     const numero = req.query.numero || req.get('X-Numero');
     const mensaje = req.query.mensaje || req.get('X-Mensaje');
-    const fileName = req.query.filename || req.get('X-Filename') || 'archivo.bin';
-    const mimeType = req.query.mimetype || req.get('X-Mimetype') || 'application/octet-stream';
+    let fileName = req.query.filename || req.get('X-Filename');
+    let mimeType = req.query.mimetype || req.get('X-Mimetype');
+
+    // Si no se proporcionó filename o mimetype, detectar automáticamente
+    const detectedType = detectFileType(req.body);
+    
+    if (!fileName) {
+      fileName = `archivo.${detectedType.extension}`;
+    }
+    
+    if (!mimeType) {
+      mimeType = detectedType.mimeType;
+    }
+
+    console.log(`Archivo detectado: ${fileName} (${mimeType})`);
 
     if (!numero || !mensaje) {
       return res.status(400).json({ 
@@ -170,6 +219,7 @@ app.post('/send-binary', async (req, res) => {
       status: 'Mensaje con archivo binario enviado correctamente',
       destinatario: numeroLimpio,
       archivo_adjunto: fileName,
+      mimetype_detectado: mimeType,
       tamano_archivo: req.body.length
     });
   } catch (error) {
