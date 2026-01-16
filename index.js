@@ -66,8 +66,21 @@ client.on('qr', (qr) => {
   console.log('Escanea este código QR con tu WhatsApp');
 });
 
+let isClientReady = false;
+
 client.on('ready', () => {
   console.log('✅ Cliente de WhatsApp está listo');
+  isClientReady = true;
+});
+
+client.on('auth_failure', (msg) => {
+  console.error('Error de autenticación:', msg);
+  isClientReady = false;
+});
+
+client.on('disconnected', (reason) => {
+  console.log('Cliente desconectado:', reason);
+  isClientReady = false;
 });
 
 client.initialize();
@@ -109,11 +122,51 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
   }
 
   try {
-    if (archivo) {
-      const media = new MessageMedia(archivo.mimetype, archivo.buffer.toString('base64'), archivo.originalname);
-      await client.sendMessage(chatId, media, { caption: mensaje });
-    } else {
-      await client.sendMessage(chatId, mensaje);
+    // Verificar que el cliente esté listo
+    if (!isClientReady) {
+      return res.status(503).json({ 
+        error: 'Cliente de WhatsApp no está listo. Por favor, espera a que se autentique.'
+      });
+    }
+
+    // Verificar que el número existe en WhatsApp
+    try {
+      const numberId = await client.getNumberId(numeroLimpio);
+      if (!numberId) {
+        return res.status(400).json({ 
+          error: 'El número no está registrado en WhatsApp',
+          detalle: `El número ${numeroLimpio} no existe en WhatsApp`
+        });
+      }
+    } catch (numberError) {
+      // Si getNumberId falla, intentar enviar de todas formas
+      console.warn('No se pudo verificar el número, intentando enviar de todas formas:', numberError.message);
+    }
+
+    // Enviar mensaje
+    let sentMessage;
+    try {
+      if (archivo) {
+        const media = new MessageMedia(archivo.mimetype, archivo.buffer.toString('base64'), archivo.originalname);
+        sentMessage = await client.sendMessage(chatId, media, { caption: mensaje });
+      } else {
+        sentMessage = await client.sendMessage(chatId, mensaje);
+      }
+    } catch (sendError) {
+      // Si el error es específicamente de sendSeen, el mensaje pudo haberse enviado
+      // Verificar si el mensaje realmente se envió
+      if (sendError.message && sendError.message.includes('markedUnread')) {
+        console.warn('Advertencia: Error al marcar mensaje como leído, pero el mensaje pudo haberse enviado:', sendError.message);
+        // El mensaje puede haberse enviado, pero no podemos confirmarlo
+        // En este caso, retornamos un mensaje de advertencia en lugar de error
+        return res.status(200).json({ 
+          status: 'Mensaje enviado (con advertencia)',
+          advertencia: 'El mensaje pudo haberse enviado, pero hubo un problema al confirmar el estado del chat',
+          destinatario: numeroLimpio,
+          archivo_adjunto: archivo ? archivo.originalname : null
+        });
+      }
+      throw sendError;
     }
 
     res.json({ 
@@ -123,9 +176,16 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error al enviar mensaje:', error);
+    
+    // Proporcionar mensaje de error más descriptivo
+    let errorMessage = error.message || 'Error desconocido';
+    if (errorMessage.includes('markedUnread')) {
+      errorMessage = 'El chat no existe o no está disponible. Verifica que el número sea correcto y que exista en WhatsApp.';
+    }
+    
     res.status(500).json({ 
       error: 'Error al enviar mensaje',
-      detalle: error.message
+      detalle: errorMessage
     });
   }
 });
@@ -211,9 +271,48 @@ app.post('/send-binary', async (req, res) => {
       });
     }
 
+    // Verificar que el cliente esté listo
+    if (!isClientReady) {
+      return res.status(503).json({ 
+        error: 'Cliente de WhatsApp no está listo. Por favor, espera a que se autentique.'
+      });
+    }
+
+    // Verificar que el número existe en WhatsApp
+    try {
+      const numberId = await client.getNumberId(numeroLimpio);
+      if (!numberId) {
+        return res.status(400).json({ 
+          error: 'El número no está registrado en WhatsApp',
+          detalle: `El número ${numeroLimpio} no existe en WhatsApp`
+        });
+      }
+    } catch (numberError) {
+      // Si getNumberId falla, intentar enviar de todas formas
+      console.warn('No se pudo verificar el número, intentando enviar de todas formas:', numberError.message);
+    }
+
     // Crear MessageMedia con los datos binarios
     const media = new MessageMedia(mimeType, req.body.toString('base64'), fileName);
-    await client.sendMessage(chatId, media, { caption: mensaje });
+    
+    try {
+      await client.sendMessage(chatId, media, { caption: mensaje });
+    } catch (sendError) {
+      // Si el error es específicamente de sendSeen, el mensaje pudo haberse enviado
+      if (sendError.message && sendError.message.includes('markedUnread')) {
+        console.warn('Advertencia: Error al marcar mensaje como leído, pero el mensaje pudo haberse enviado:', sendError.message);
+        // El mensaje puede haberse enviado, retornamos advertencia en lugar de error
+        return res.status(200).json({ 
+          status: 'Mensaje enviado (con advertencia)',
+          advertencia: 'El mensaje pudo haberse enviado, pero hubo un problema al confirmar el estado del chat',
+          destinatario: numeroLimpio,
+          archivo_adjunto: fileName,
+          mimetype_detectado: mimeType,
+          tamano_archivo: req.body.length
+        });
+      }
+      throw sendError;
+    }
 
     res.json({ 
       status: 'Mensaje con archivo binario enviado correctamente',
@@ -224,9 +323,16 @@ app.post('/send-binary', async (req, res) => {
     });
   } catch (error) {
     console.error('Error al enviar mensaje binario:', error);
+    
+    // Proporcionar mensaje de error más descriptivo
+    let errorMessage = error.message || 'Error desconocido';
+    if (errorMessage.includes('markedUnread')) {
+      errorMessage = 'El chat no existe o no está disponible. Verifica que el número sea correcto y que exista en WhatsApp.';
+    }
+    
     res.status(500).json({ 
       error: 'Error al enviar mensaje binario',
-      detalle: error.message
+      detalle: errorMessage
     });
   }
 });
