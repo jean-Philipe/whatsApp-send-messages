@@ -11,12 +11,12 @@ const port = 3001;
 // Middleware personalizado para detectar el tipo de contenido
 app.use((req, res, next) => {
   const contentType = req.get('Content-Type');
-  
+
   // Si es multipart/form-data, no procesar aquí (multer lo hará)
   if (contentType && contentType.includes('multipart/form-data')) {
     return next();
   }
-  
+
   // Si es application/octet-stream (binary data), procesar como buffer
   if (contentType && contentType.includes('application/octet-stream')) {
     let data = [];
@@ -30,7 +30,7 @@ app.use((req, res, next) => {
     });
     return;
   }
-  
+
   // Para otros tipos de contenido, usar middleware estándar
   if (!contentType || contentType.includes('application/json')) {
     express.json({ limit: '50mb' })(req, res, next);
@@ -87,7 +87,7 @@ client.initialize();
 
 // Configurar multer para manejar uploads de archivos
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB límite
@@ -106,7 +106,7 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
   const archivo = req.file;
 
   if (!numero || !mensaje) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: 'Faltan campos requeridos: numero y mensaje son obligatorios'
     });
   }
@@ -116,7 +116,7 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
   let chatId = numeroLimpio + '@c.us';
 
   if (numeroLimpio.length < 8) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: 'Número de teléfono inválido (muy corto)'
     });
   }
@@ -124,7 +124,7 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
   try {
     // Verificar que el cliente esté listo
     if (!isClientReady) {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Cliente de WhatsApp no está listo. Por favor, espera a que se autentique.'
       });
     }
@@ -133,7 +133,7 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
     try {
       const numberId = await client.getNumberId(numeroLimpio);
       if (!numberId) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'El número no está registrado en WhatsApp',
           detalle: `El número ${numeroLimpio} no existe en WhatsApp`
         });
@@ -149,29 +149,29 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
     let sentMessage;
     // Asegurar que el chat esté disponible antes de enviar
     await client.getChatById(chatId);
-    
+
     if (archivo) {
       const media = new MessageMedia(archivo.mimetype, archivo.buffer.toString('base64'), archivo.originalname);
-      sentMessage = await client.sendMessage(chatId, media, { caption: mensaje });
+      sentMessage = await client.sendMessage(chatId, media, { caption: mensaje, sendSeen: false });
     } else {
-      sentMessage = await client.sendMessage(chatId, mensaje);
+      sentMessage = await client.sendMessage(chatId, mensaje, { sendSeen: false });
     }
 
-    res.json({ 
+    res.json({
       status: 'Mensaje enviado correctamente',
       destinatario: numeroLimpio,
       archivo_adjunto: archivo ? archivo.originalname : null
     });
   } catch (error) {
     console.error('Error al enviar mensaje:', error);
-    
+
     // Proporcionar mensaje de error más descriptivo
     let errorMessage = error.message || 'Error desconocido';
     if (errorMessage.includes('markedUnread')) {
       errorMessage = 'El chat no existe o no está disponible. Verifica que el número sea correcto y que exista en WhatsApp.';
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al enviar mensaje',
       detalle: errorMessage
     });
@@ -184,32 +184,32 @@ function detectFileType(buffer) {
   if (buffer.slice(0, 4).toString() === '%PDF') {
     return { mimeType: 'application/pdf', extension: 'pdf' };
   }
-  
+
   // PNG: 89 50 4E 47
   if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
     return { mimeType: 'image/png', extension: 'png' };
   }
-  
+
   // JPEG: FF D8 FF
   if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
     return { mimeType: 'image/jpeg', extension: 'jpg' };
   }
-  
+
   // GIF: 47 49 46 38
   if (buffer.slice(0, 4).toString() === 'GIF8') {
     return { mimeType: 'image/gif', extension: 'gif' };
   }
-  
+
   // MP4: 00 00 00 18 66 74 79 70
   if (buffer.slice(4, 8).toString() === 'ftyp') {
     return { mimeType: 'video/mp4', extension: 'mp4' };
   }
-  
+
   // DOCX: 50 4B 03 04 (ZIP format)
   if (buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) {
     return { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', extension: 'docx' };
   }
-  
+
   // Por defecto
   return { mimeType: 'application/octet-stream', extension: 'bin' };
 }
@@ -219,7 +219,7 @@ app.post('/send-binary', async (req, res) => {
   try {
     // Verificar si hay datos binarios
     if (!req.binaryData || !Buffer.isBuffer(req.body)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'No se recibieron datos binarios válidos'
       });
     }
@@ -232,11 +232,11 @@ app.post('/send-binary', async (req, res) => {
 
     // Si no se proporcionó filename o mimetype, detectar automáticamente
     const detectedType = detectFileType(req.body);
-    
+
     if (!fileName) {
       fileName = `archivo.${detectedType.extension}`;
     }
-    
+
     if (!mimeType) {
       mimeType = detectedType.mimeType;
     }
@@ -244,7 +244,7 @@ app.post('/send-binary', async (req, res) => {
     console.log(`Archivo detectado: ${fileName} (${mimeType})`);
 
     if (!numero || !mensaje) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Faltan campos requeridos: numero y mensaje (usar query params o headers X-Numero, X-Mensaje)'
       });
     }
@@ -254,14 +254,14 @@ app.post('/send-binary', async (req, res) => {
     let chatId = numeroLimpio + '@c.us';
 
     if (numeroLimpio.length < 8) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Número de teléfono inválido (muy corto)'
       });
     }
 
     // Verificar que el cliente esté listo
     if (!isClientReady) {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Cliente de WhatsApp no está listo. Por favor, espera a que se autentique.'
       });
     }
@@ -270,7 +270,7 @@ app.post('/send-binary', async (req, res) => {
     try {
       const numberId = await client.getNumberId(numeroLimpio);
       if (!numberId) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'El número no está registrado en WhatsApp',
           detalle: `El número ${numeroLimpio} no existe en WhatsApp`
         });
@@ -284,13 +284,13 @@ app.post('/send-binary', async (req, res) => {
 
     // Crear MessageMedia con los datos binarios
     const media = new MessageMedia(mimeType, req.body.toString('base64'), fileName);
-    
+
     // Asegurar que el chat esté disponible antes de enviar
     await client.getChatById(chatId);
 
-    await client.sendMessage(chatId, media, { caption: mensaje });
+    await client.sendMessage(chatId, media, { caption: mensaje, sendSeen: false });
 
-    res.json({ 
+    res.json({
       status: 'Mensaje con archivo binario enviado correctamente',
       destinatario: numeroLimpio,
       archivo_adjunto: fileName,
@@ -299,14 +299,14 @@ app.post('/send-binary', async (req, res) => {
     });
   } catch (error) {
     console.error('Error al enviar mensaje binario:', error);
-    
+
     // Proporcionar mensaje de error más descriptivo
     let errorMessage = error.message || 'Error desconocido';
     if (errorMessage.includes('markedUnread')) {
       errorMessage = 'El chat no existe o no está disponible. Verifica que el número sea correcto y que exista en WhatsApp.';
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Error al enviar mensaje binario',
       detalle: errorMessage
     });
@@ -315,7 +315,7 @@ app.post('/send-binary', async (req, res) => {
 
 // Endpoint de información
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'Servidor WhatsApp funcionando correctamente',
     endpoints: {
       'POST /send': {
