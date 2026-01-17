@@ -113,7 +113,7 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
 
   // Limpiar y validar el número
   const numeroLimpio = numero.replace(/\D/g, '');
-  const chatId = numeroLimpio + '@c.us';
+  let chatId = numeroLimpio + '@c.us';
 
   if (numeroLimpio.length < 8) {
     return res.status(400).json({ 
@@ -138,6 +138,8 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
           detalle: `El número ${numeroLimpio} no existe en WhatsApp`
         });
       }
+      // Usar el ID serializado correcto que nos devuelve WhatsApp
+      chatId = numberId._serialized;
     } catch (numberError) {
       // Si getNumberId falla, intentar enviar de todas formas
       console.warn('No se pudo verificar el número, intentando enviar de todas formas:', numberError.message);
@@ -145,28 +147,14 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
 
     // Enviar mensaje
     let sentMessage;
-    try {
-      if (archivo) {
-        const media = new MessageMedia(archivo.mimetype, archivo.buffer.toString('base64'), archivo.originalname);
-        sentMessage = await client.sendMessage(chatId, media, { caption: mensaje });
-      } else {
-        sentMessage = await client.sendMessage(chatId, mensaje);
-      }
-    } catch (sendError) {
-      // Si el error es específicamente de sendSeen, el mensaje pudo haberse enviado
-      // Verificar si el mensaje realmente se envió
-      if (sendError.message && sendError.message.includes('markedUnread')) {
-        console.warn('Advertencia: Error al marcar mensaje como leído, pero el mensaje pudo haberse enviado:', sendError.message);
-        // El mensaje puede haberse enviado, pero no podemos confirmarlo
-        // En este caso, retornamos un mensaje de advertencia en lugar de error
-        return res.status(200).json({ 
-          status: 'Mensaje enviado (con advertencia)',
-          advertencia: 'El mensaje pudo haberse enviado, pero hubo un problema al confirmar el estado del chat',
-          destinatario: numeroLimpio,
-          archivo_adjunto: archivo ? archivo.originalname : null
-        });
-      }
-      throw sendError;
+    // Asegurar que el chat esté disponible antes de enviar
+    await client.getChatById(chatId);
+    
+    if (archivo) {
+      const media = new MessageMedia(archivo.mimetype, archivo.buffer.toString('base64'), archivo.originalname);
+      sentMessage = await client.sendMessage(chatId, media, { caption: mensaje });
+    } else {
+      sentMessage = await client.sendMessage(chatId, mensaje);
     }
 
     res.json({ 
@@ -263,7 +251,7 @@ app.post('/send-binary', async (req, res) => {
 
     // Limpiar y validar el número
     const numeroLimpio = numero.replace(/\D/g, '');
-    const chatId = numeroLimpio + '@c.us';
+    let chatId = numeroLimpio + '@c.us';
 
     if (numeroLimpio.length < 8) {
       return res.status(400).json({ 
@@ -287,6 +275,8 @@ app.post('/send-binary', async (req, res) => {
           detalle: `El número ${numeroLimpio} no existe en WhatsApp`
         });
       }
+      // Usar el ID serializado correcto que nos devuelve WhatsApp
+      chatId = numberId._serialized;
     } catch (numberError) {
       // Si getNumberId falla, intentar enviar de todas formas
       console.warn('No se pudo verificar el número, intentando enviar de todas formas:', numberError.message);
@@ -295,24 +285,10 @@ app.post('/send-binary', async (req, res) => {
     // Crear MessageMedia con los datos binarios
     const media = new MessageMedia(mimeType, req.body.toString('base64'), fileName);
     
-    try {
-      await client.sendMessage(chatId, media, { caption: mensaje });
-    } catch (sendError) {
-      // Si el error es específicamente de sendSeen, el mensaje pudo haberse enviado
-      if (sendError.message && sendError.message.includes('markedUnread')) {
-        console.warn('Advertencia: Error al marcar mensaje como leído, pero el mensaje pudo haberse enviado:', sendError.message);
-        // El mensaje puede haberse enviado, retornamos advertencia en lugar de error
-        return res.status(200).json({ 
-          status: 'Mensaje enviado (con advertencia)',
-          advertencia: 'El mensaje pudo haberse enviado, pero hubo un problema al confirmar el estado del chat',
-          destinatario: numeroLimpio,
-          archivo_adjunto: fileName,
-          mimetype_detectado: mimeType,
-          tamano_archivo: req.body.length
-        });
-      }
-      throw sendError;
-    }
+    // Asegurar que el chat esté disponible antes de enviar
+    await client.getChatById(chatId);
+
+    await client.sendMessage(chatId, media, { caption: mensaje });
 
     res.json({ 
       status: 'Mensaje con archivo binario enviado correctamente',
