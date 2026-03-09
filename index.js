@@ -61,33 +61,33 @@ const client = new Client({
   }
 });
 
+let isClientReady = false;
+
 client.on('qr', (qr) => {
   qrcode.generate(qr, { small: true });
-  console.log(' Escanea este código QR con tu WhatsApp');
+  console.log('--- ESCANEA EL QR CON TU WHATSAPP ---');
 });
 
 client.on('loading_screen', (percent, message) => {
-  console.log(' CLIENTE: Cargando...', percent, '% -', message);
+  console.log(` CLIENTE: Cargando... ${percent}% - ${message}`);
 });
 
 client.on('authenticated', () => {
-  console.log(' CLIENTE: Autenticado correctamente');
+  console.log('✅ CLIENTE: Autenticado correctamente');
 });
 
-let isClientReady = false;
-
 client.on('ready', () => {
-  console.log('✅ Cliente de WhatsApp está listo');
+  console.log('✅✅ CLIENTE DE WHATSAPP ESTÁ LISTO Y OPERATIVO ✅✅');
   isClientReady = true;
 });
 
 client.on('auth_failure', (msg) => {
-  console.error(' ERROR DE AUTENTICACIÓN:', msg);
+  console.error('❌ ERROR DE AUTENTICACIÓN:', msg);
   isClientReady = false;
 });
 
 client.on('disconnected', (reason) => {
-  console.log('Cliente desconectado:', reason);
+  console.log('❌ Cliente desconectado:', reason);
   isClientReady = false;
 });
 
@@ -134,7 +134,7 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
     if (!isClientReady) {
       return res.status(503).json({
         error: 'Cliente de WhatsApp no está listo.',
-        detalle: 'El cliente aún no ha completado el proceso de autenticación o se ha desconectado. Por favor, revisa los logs del servidor para ver el estado actual.'
+        detalle: 'El cliente aún no ha completado el proceso de autenticación o se ha desconectado. Por favor, revisa los logs del servidor para ver el estado actual. Debes visualizar ✅✅ CLIENTE DE WHATSAPP ESTÁ LISTO Y OPERATIVO ✅✅.'
       });
     }
 
@@ -341,7 +341,7 @@ app.get('/', (req, res) => {
     },
     examples: {
       multipart: 'curl -X POST -F "numero=1234567890" -F "mensaje=Hola" -F "archivo=@archivo.pdf" http://localhost:3001/send',
-      binary: 'curl -X POST -H "Content-Type: application/octet-stream" -H "X-Numero: 1234567890" -H "X-Mensaje: Hola" -H "X-Filename: archivo.pdf" -H "X-Mimetype: application/pdf" --data-binary @archivo.pdf http://localhost:3001/send-binary'
+      binary: 'curl -X POST -H "Content-Type: application/octet-type" -H "X-Numero: 1234567890" -H "X-Mensaje: Hola" -H "X-Filename: archivo.pdf" -H "X-Mimetype: application/pdf" --data-binary @archivo.pdf http://localhost:3001/send-binary'
     }
   });
 });
