@@ -63,7 +63,15 @@ const client = new Client({
 
 client.on('qr', (qr) => {
   qrcode.generate(qr, { small: true });
-  console.log('Escanea este código QR con tu WhatsApp');
+  console.log(' Escanea este código QR con tu WhatsApp');
+});
+
+client.on('loading_screen', (percent, message) => {
+  console.log(' CLIENTE: Cargando...', percent, '% -', message);
+});
+
+client.on('authenticated', () => {
+  console.log(' CLIENTE: Autenticado correctamente');
 });
 
 let isClientReady = false;
@@ -74,7 +82,7 @@ client.on('ready', () => {
 });
 
 client.on('auth_failure', (msg) => {
-  console.error('Error de autenticación:', msg);
+  console.error(' ERROR DE AUTENTICACIÓN:', msg);
   isClientReady = false;
 });
 
@@ -125,7 +133,8 @@ app.post('/send', upload.single('archivo'), async (req, res) => {
     // Verificar que el cliente esté listo
     if (!isClientReady) {
       return res.status(503).json({
-        error: 'Cliente de WhatsApp no está listo. Por favor, espera a que se autentique.'
+        error: 'Cliente de WhatsApp no está listo.',
+        detalle: 'El cliente aún no ha completado el proceso de autenticación o se ha desconectado. Por favor, revisa los logs del servidor para ver el estado actual.'
       });
     }
 
